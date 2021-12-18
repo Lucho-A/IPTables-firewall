@@ -128,9 +128,9 @@ function Set_Input_Rules {
 	$IP_TABLES -A INPUT -i $ETH -j ACCEPT
 	# VPN
 	$IP_TABLES -A INPUT -i $ETH_VPN -j ACCEPT
-  # KDE CONNECT
-  $IP_TABLES -I INPUT -p udp --dport 1714:1764 -m state --mac-source [MAC_OF_KDE_CONNECT_DEVICE] --state NEW,ESTABLISHED -j ACCEPT
-  $IP_TABLES -I INPUT -p tcp --dport 1714:1764 -m state --mac-source [MAC_OF_KDE_CONNECT_DEVICE] --state NEW,ESTABLISHED -j ACCEPT
+  	# KDE CONNECT
+  	$IP_TABLES -I INPUT -p udp --dport 1714:1764 -m state --mac-source [MAC_OF_KDE_CONNECT_DEVICE] --state NEW,ESTABLISHED -j ACCEPT
+  	$IP_TABLES -I INPUT -p tcp --dport 1714:1764 -m state --mac-source [MAC_OF_KDE_CONNECT_DEVICE] --state NEW,ESTABLISHED -j ACCEPT
 	# Do not allow packets frequently used by port-scanners
 	#######################################################
 	# All of the bits are cleared
