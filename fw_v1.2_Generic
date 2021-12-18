@@ -1,0 +1,238 @@
+#!/bin/bash
+#
+# IPTables Firewall script for GNU/Linux 2.4.x (or superior)
+#
+################################
+# v1.0 First version 2008.07.28
+################################
+# v1.1 2020.03.30
+# Added VPN (ETH_VPN)
+# Removed printer rules
+# Removed torrent input rules
+################################
+# v1.2 2021.11.23
+# Generic modif. for Git
+################################
+# Sections:
+# 1.0 Declarations
+#  1.1 Variables
+#  1.2 Procedures
+#  1.2.1 Default policies
+#  1.2.2 Clean rules
+#  1.2.3 IPV6 Policies
+#  1.2.4 Kernel Flags
+#  1.2.5 Input rules
+#  1.2.6 Output rules
+#  1.3 Chains
+#  1.3.1 LOG and DROP
+#  1.3.2 LOG and DROP SCAN
+# 2.0 Main procedure execution
+##############################
+# 1.0 Declarations
+##################
+# 1.1 Variables
+###############
+IP="[IP]"
+ETH="[ETH_NAME]"
+ETH_VPN = "[ETH_VPN_NAME]"
+IP_TABLES="/sbin/iptables"
+IP6_TABLES="/sbin/ip6tables"
+DEFAULT_POLICY="DROP"
+################
+# 1.2 Procedures
+################
+# 1.2.1 Default policies
+########################
+function Set_Default_Policy {
+	$IP_TABLES -P INPUT $DEFAULT_POLICY
+	$IP_TABLES -P OUTPUT $DEFAULT_POLICY
+	$IP_TABLES -P FORWARD $DEFAULT_POLICY
+	echo "Defaults policies set to $DEFAULT_POLICY on INPUT/OUTPUT/FORWARD"
+}
+# 1.2.2 Clean rules
+###################
+function Clean_Rules {
+	# Cleaning any existing rules form all chains.
+	$IP_TABLES -F
+	$IP_TABLES -F -t nat
+	$IP_TABLES -F -t mangle
+	# Cleaning any pre-existing user-defined chains.
+	$IP_TABLES -X
+	$IP_TABLES -X -t nat
+	$IP_TABLES -X -t mangle
+	# Zero all packet and byte counters
+	$IP_TABLES -Z
+	$IP_TABLES -Z -t nat
+	$IP_TABLES -Z -t mangle
+}
+# 1.2.3 IPV6 Policies
+#####################
+function Block_IPV6_Traffic {
+	# If the ip6tables command is available, try to block all IPv6 traffic.
+	if [ -x $IP6_TABLES ]; then
+		# Set the default policies (drop everything).
+		$IP6_TABLES -P INPUT DROP 2>/dev/null
+		$IP6_TABLES -P FORWARD DROP 2>/dev/null
+		$IP6_TABLES -P OUTPUT DROP 2>/dev/null
+		# Delete all rules.
+		$IP6_TABLES -F 2>/dev/null
+		$IP6_TABLES -t mangle -F 2>/dev/null
+		# Delete all (non-builtin) user-defined chains.
+		$IP6_TABLES -X 2>/dev/null
+		$IP6_TABLES -t mangle -X 2>/dev/null
+		# Zero all packet and byte counters.
+		$IP6_TABLES -Z 2>/dev/null
+		$IP6_TABLES -t mangle -Z 2>/dev/null
+		echo "IPV6 traffic blocked"
+	else
+		echo "$IP6_TABLES not available"
+	fi
+}
+# 1.2.4 Kernel Flags
+####################
+function Set_Kernel_Flags {
+	echo "Setting Kernel flags"
+	# Turn off IP Forwarding and Masquerading
+	echo "0" > /proc/sys/net/ipv4/ip_forward
+	# Turn off dynamic IP hacking
+	echo "0" > /proc/sys/net/ipv4/ip_dynaddr
+	# Do not accept source routed packets
+	for i in /proc/sys/net/ipv4/conf/*/accept_source_route; do echo "0" > $i; done
+	# Do not accept ICMP redirects
+	for i in /proc/sys/net/ipv4/conf/*/accept_redirects; do echo "0" > $i; done
+	# Do not send ICMP redirects
+	for i in /proc/sys/net/ipv4/conf/*/send_redirects; do echo "0" > $i; done
+	# Ignore all incoming ICMP echo requests
+	#echo "0" > /proc/sys/net/ipv4/icmp_echo_ignore_all
+	# Enable IP spoofing protection
+	for i in /proc/sys/net/ipv4/conf/*/rp_filter; do echo "1" > $i; done
+	# Protect against SYN flood attacks
+	echo "1" > /proc/sys/net/ipv4/tcp_syncookies
+	# Ignore ICMP echo requests to broadcast/multicast addresses. Smurf (and similar) DoS attacks.
+	echo "1" > /proc/sys/net/ipv4/icmp_echo_ignore_broadcasts
+	# Do not log packets with impossible addresses
+	for i in /proc/sys/net/ipv4/conf/*/log_martians; do echo "0" > $i; done
+	# Do not log invalid responses to broadcast frames
+	echo "1" > /proc/sys/net/ipv4/icmp_ignore_bogus_error_responses
+	# Disable proxy_arp. Should not be needed, usually
+	for i in /proc/sys/net/ipv4/conf/*/proxy_arp; do echo "0" > $i; done
+	# Enable secure redirects. Helps against MITM attacks
+	for i in /proc/sys/net/ipv4/conf/*/secure_redirects; do echo "1" > $i; done
+}
+# 1.2.5 Input rules
+###################
+function Set_Input_Rules {
+	echo "Setting Input Rules"
+	# Allow unlimited traffic on loopback interface
+	$IP_TABLES -A INPUT -i lo -j ACCEPT
+	$IP_TABLES -A INPUT -i $ETH -j ACCEPT
+	# VPN
+	$IP_TABLES -A INPUT -i $ETH_VPN -j ACCEPT
+  # KDE CONNECT
+  $IP_TABLES -I INPUT -p udp --dport 1714:1764 -m state --mac-source [MAC_OF_KDE_CONNECT_DEVICE] --state NEW,ESTABLISHED -j ACCEPT
+  $IP_TABLES -I INPUT -p tcp --dport 1714:1764 -m state --mac-source [MAC_OF_KDE_CONNECT_DEVICE] --state NEW,ESTABLISHED -j ACCEPT
+	# Do not allow packets frequently used by port-scanners
+	#######################################################
+	# All of the bits are cleared
+	$IP_TABLES -A INPUT -p tcp --tcp-flags ALL NONE -j LOG_DROP_SCAN
+	# SYN and FIN are both set
+	$IP_TABLES -A INPUT -p tcp --tcp-flags SYN,FIN SYN,FIN -j LOG_DROP_SCAN
+	# SYN and RST are both set
+	$IP_TABLES -A INPUT -p tcp --tcp-flags SYN,RST SYN,RST -j LOG_DROP_SCAN
+	# FIN and RST are both set
+	$IP_TABLES -A INPUT -p tcp --tcp-flags FIN,RST FIN,RST -j LOG_DROP_SCAN
+	# FIN is the only bit set, without the expected accompanying ACK
+	$IP_TABLES -A INPUT -p tcp --tcp-flags ACK,FIN FIN -j LOG_DROP_SCAN
+	# PSH is the only bit set, without the expected accompanying ACK
+	$IP_TABLES -A INPUT -p tcp --tcp-flags ACK,PSH PSH -j LOG_DROP_SCAN
+	# URG is the only bit set, without the expected accompanying ACK
+	$IP_TABLES -A INPUT -p tcp --tcp-flags ACK,URG URG -j LOG_DROP_SCAN
+	# SYN-Flood (Request for new connection; large number indicate possible DDoS-type attack)
+	$IP_TABLES -A INPUT -p tcp --tcp-flags SYN,RST,ACK SYN -j DROP
+	# Permit packets in to firewall itself that are part of existing and related connections
+	#######################################################
+	$IP_TABLES -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+	# Explicitly default drop (for performance)
+	#####################################################
+	$IP_TABLES -A INPUT -i $ETH -p tcp --dport 0:65535 -j LOG_DROP
+	$IP_TABLES -A INPUT -i $ETH -p udp --dport 0:65535 -j LOG_DROP
+}
+# 1.2.6 Output rules
+####################
+function Set_Output_Rules {
+	echo "Setting Output Rules"
+	# Allow unlimited traffic on loopback interface
+	$IP_TABLES -A OUTPUT -o lo -j ACCEPT
+	$IP_TABLES -A OUTPUT -o $ETH -j ACCEPT
+	$IP_TABLES -A OUTPUT -o tun0 -j ACCEPT
+	# Explicitly default drop (for performance)
+	$IP_TABLES -A OUTPUT -o $ETH -p tcp --dport 0:65535 -j DROP
+	$IP_TABLES -A OUTPUT -o $ETH -p udp --dport 0:65535 -j DROP
+}
+# 1.3 Chains
+############
+# 1.3.1 LOG and DROP
+####################
+function Set_Log_Drop_Chain {
+	# Custom DROP chain
+	$IP_TABLES -N LOG_DROP
+	$IP_TABLES -A LOG_DROP -p tcp -m limit --limit 1/s -j LOG --log-prefix "_fw_TCP_DROP_" --log-level=4
+	$IP_TABLES -A LOG_DROP -p udp -m limit --limit 1/s -j LOG --log-prefix "_fw_UDP_DROP_" --log-level=4
+	$IP_TABLES -A LOG_DROP -p icmp -m limit --limit 1/s -j LOG --log-prefix "_fw_ICMP_DROP_" --log-level=4
+	$IP_TABLES -A LOG_DROP -f -m limit --limit 1/s -j LOG --log-prefix "_fw_FRAG_DROP_" --log-level=4
+	$IP_TABLES -A LOG_DROP -j DROP
+}
+# 1.3.2 LOG and DROP SCAN
+#########################
+function Set_Log_Drop_Scan_Chain {
+	# Custom DROP for possible port scan
+	$IP_TABLES -N LOG_DROP_SCAN
+	$IP_TABLES -A LOG_DROP_SCAN -p tcp -m limit --limit 1/s -j LOG --log-prefix "_fw_TCP_DROP_SCAN_?_" --log-level=4
+	$IP_TABLES -A LOG_DROP_SCAN -p udp -m limit --limit 1/s -j LOG --log-prefix "_fw_UDP_DROP_SCAN_?_" --log-level=4
+	$IP_TABLES -A LOG_DROP_SCAN -p icmp -m limit --limit 1/s -j LOG --log-prefix "_fw_ICMP_DROP_SCAN_?_" --log-level=4
+	$IP_TABLES -A LOG_DROP_SCAN -f -m limit --limit 1/s -j LOG --log-prefix "_fw_FRAG_DROP_SCAN_?_" --log-level=4
+	$IP_TABLES -A LOG_DROP_SCAN -j DROP
+}
+# 2.0 Main
+##########
+# Note: The default policies are set before flushing the chains, to prevent a short timespan
+# between flushing the chains and setting policies where any traffic would be allowed
+case "$1" in
+	start | restart)
+		echo "$1ing Firewall service"
+		if [! -z "$2" ]
+			IP="$2"
+		fi
+	  	Set_Default_Policy
+	  	Clean_Rules
+	  	Block_IPV6_Traffic
+	  	Set_Kernel_Flags
+	  	Set_Log_Drop_Chain
+	  	Set_Log_Drop_Scan_Chain
+	  	Set_Input_Rules
+	  	Set_Output_Rules
+	  	echo "Firewall $1ed"
+	  	;;
+	stop)
+	  	echo "Stopping Firewall service";
+	  	Set_Default_Policy
+	  	Clean_Rules
+	  	Set_Kernel_Flags
+	  	echo "Firewall stopped"
+	  	;;
+	open)
+	  	echo "Stopping Firewall service"
+	  	DEFAULT_POLICY="ACCEPT"
+	  	Set_Default_Policy
+	  	Clean_Rules
+	  	echo "Firewall stopped"
+	  	;;
+	status)
+	  	clear;
+	  	$IP_TABLES -L -v
+	  	;;
+	  * | help)
+	  	echo "Usage (as root): $0 [start [IP] | restart [IP] | stop | open | status | help]"
+	  	;;
+esac
+exit 0
