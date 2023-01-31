@@ -148,7 +148,7 @@ function Set_Input_Rules {
 	${IP_TABLES} -A INPUT -i ${ETH} -j ACCEPT
 	# VPN
 	#${IP_TABLES} -A INPUT -i ${ETH}_VPN -j ACCEPT
-    # KDE CONNECT  
+    	# KDE CONNECT  
    	${IP_TABLES} -I INPUT -p udp --dport 1714:1764 -m mac --mac-source $KDE_CONNECT_MAC -m state --state NEW,ESTABLISHED -j ACCEPT
 	${IP_TABLES} -I INPUT -p tcp --dport 1714:1764 -m mac --mac-source $KDE_CONNECT_MAC -m state --state NEW,ESTABLISHED -j ACCEPT
 	# Do not allow packets frequently used by port-scanners
@@ -221,7 +221,6 @@ case "$1" in
 	start | restart) 
 		echo ""
 		echo "Starting/Restarting firewall..."
-	  	echo "${TIMESTAMP};NEW_$1;" >> ${LOG_FILE}
 	  	Set_Default_Policy
 	  	Clean_Rules
 	  	Block_IPV6_Traffic
@@ -230,37 +229,31 @@ case "$1" in
 	  	Set_Log_Drop_Scan_Chain
 	  	Set_Input_Rules
 	  	Set_Output_Rules
-	  	echo "${TIMESTAMP};END_STARTED_$1;" >> ${LOG_FILE}
 	  	echo "Firewall $1ed: ${C_HGREEN}ready & running ${C_DEFAULT}"
 	  	echo ""
 	  	;;
 	stop)
 		echo ""
 	  	echo "Stopping firewall...";
-	  	echo "${TIMESTAMP};NEW_$1;" >> ${LOG_FILE}
 		DEFAULT_POLICY="DROP"
 	  	Set_Default_Policy
 	  	Clean_Rules
 	  	Set_Kernel_Flags
-	  	echo "${TIMESTAMP};END_STOPPED_$1;" >> ${LOG_FILE}
 	  	echo "Firewall ${C_HGREEN}running${C_DEFAULT} with ${C_HRED}DROP${C_DEFAULT} policy"
 	  	echo ""
 	  	;;
 	open)
 		echo ""
 	  	echo "Starting/Restarting firewall in open mode..."
-	  	echo "${TIMESTAMP};NEW_$1;" >> ${LOG_FILE}
 	  	DEFAULT_POLICY="ACCEPT"
 	  	Set_Default_Policy
 	  	Clean_Rules
-	  	echo "${TIMESTAMP};END_STOPPED_$1;" >> ${LOG_FILE}
 	  	echo "Firewall ${C_HGREEN}running${C_DEFAULT} with ${C_HRED}ACCEPT${C_DEFAULT} policy"
 	  	echo ""
 	  	;;
 	sniffing)
 		echo ""
 	  	echo "Starting/Restarting firewall in sniffing mode......"
-	  	echo "${TIMESTAMP};NEW_$1;" >> ${LOG_FILE}
 	  	DEFAULT_POLICY="DROP"
 	  	Set_Default_Policy
 	  	Clean_Rules
@@ -276,13 +269,11 @@ case "$1" in
 		${IP_TABLES} -I FORWARD -i ${ETH0} -o ${ETH0} -j ACCEPT
 		for i in /proc/sys/net/ipv4/conf/*/send_redirects; do echo "0" > $i; done
 		${IP_TABLES} -t mangle -A FORWARD -j TTL --ttl-inc 1
-	  	echo "${TIMESTAMP};END_STOPPED_$1;" >> ${LOG_FILE}
 	  	set -e
 	  	echo "Firewall${C_HGREEN} ready & running ${C_DEFAULT}"
 	  	echo ""
 	  	;;	  	
 	status)
-	  	echo "${TIMESTAMP};NEW_$1;" >> ${LOG_FILE}
 	  	clear;
 	  	${IP_TABLES} -L -v
 	  	;;
