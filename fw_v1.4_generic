@@ -18,7 +18,7 @@
 # Bug fixed: Start/Restart $2
 ###################################
 # v1.4 2023.01.30
-# Remove IP var because useless
+# Remove IP var
 # Added colors
 # Fixed icmp_echo_ignore_all value
 # Bracket incorporation to vars
@@ -251,21 +251,6 @@ case "$1" in
 	  	echo "Firewall ${C_HGREEN}running${C_DEFAULT} with ${C_HRED}ACCEPT${C_DEFAULT} policy"
 	  	echo ""
 	  	;;
-	sniffing)
-		echo ""
-	  	echo "Starting/Restarting firewall in sniffing mode......"
-	  	DEFAULT_POLICY="DROP"
-	  	Set_Default_Policy
-	  	Clean_Rules
-	  	Block_IPV6_Traffic
-	  	Set_Kernel_Flags
-	  	Set_Log_Drop_Chain
-	  	Set_Log_Drop_Scan_Chain
-	  	Set_Input_Rules
-	  	Set_Output_Rules
-	  	echo "Firewall${C_HGREEN} ready & running ${C_DEFAULT}"
-	  	echo ""
-	  	;;	  	
 	status)
 	  	clear;
 	  	${IP_TABLES} -L -v
