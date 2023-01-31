@@ -256,7 +256,7 @@ case "$1" in
 	  	${IP_TABLES} -L -v
 	  	;;
 	* | help)
-	  	echo "Usage (as root): $0 [start | restart | stop | open | sniffing | status | help]"
+	  	echo "Usage (as root): $0 [start | restart | stop | open | status | help]"
 	  	;;
 esac
 exit 0
