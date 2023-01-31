@@ -263,13 +263,6 @@ case "$1" in
 	  	Set_Log_Drop_Scan_Chain
 	  	Set_Input_Rules
 	  	Set_Output_Rules
-		echo "Setting sniffing rules...";
-	  	ip link set ${ETH} promisc on
-	  	echo "1" > /proc/sys/net/ipv4/ip_forward
-		${IP_TABLES} -I FORWARD -i ${ETH0} -o ${ETH0} -j ACCEPT
-		for i in /proc/sys/net/ipv4/conf/*/send_redirects; do echo "0" > $i; done
-		${IP_TABLES} -t mangle -A FORWARD -j TTL --ttl-inc 1
-	  	set -e
 	  	echo "Firewall${C_HGREEN} ready & running ${C_DEFAULT}"
 	  	echo ""
 	  	;;	  	
