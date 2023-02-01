@@ -15,7 +15,9 @@
 # 	1.3 Chains
 # 	1.3.1 LOG and DROP
 # 	1.3.2 LOG and DROP SCAN
-# 2.0 Main procedure
+# 2.0 Others
+# 	2.1 Usage
+# 3.0 Main procedure
 
 # 1.0 Declarations
 # 1.1 Variables
@@ -189,51 +191,111 @@ function Set_Log_Drop_Scan_Chain {
 	${IP_TABLES} -A LOG_DROP_SCAN -f -m limit --limit 1/s -j LOG --log-prefix "_fw_FRAG_DROP_SCAN_?_" --log-level=4
 	${IP_TABLES} -A LOG_DROP_SCAN -j DROP
 }
-# 2.0 Main
+# 2.1 Usage
+###########
+function Usage {
+	echo ""
+	echo "Usage (as root): $0 [[start | restart] [--open-mode | --hack-mode] | stop | status | help]"
+	echo "" 
+	echo "Examples:" 
+	echo "	# ${0} start"
+	echo "	# ${0} start --hack-mode"
+	echo "	# ${0} stop"
+	echo ""
+}
+# 3.0 Main
 ##########
 # Note: The default policies are set before flushing the chains, to prevent a short timespan
 # between flushing the chains and setting policies where any traffic would be allowed
 case "$1" in
 	start | restart) 
+			echo ""
+			echo "Starting/Restarting firewall..."
+		case "$2" in
+			"")
+		  		Set_Default_Policy
+		  		Clean_Rules
+		  		Block_IPV6_Traffic
+		  		Set_Kernel_Flags
+		  		Set_Log_Drop_Chain
+		  		Set_Log_Drop_Scan_Chain
+		  		Set_Input_Rules
+		  		Set_Output_Rules
+		  		;;
+			--open-mode)			
+				DEFAULT_POLICY="ACCEPT"
+		  		Set_Default_Policy
+		  		Clean_Rules
+		  		echo "Firewall ${C_HGREEN}running${C_DEFAULT} with ${C_HRED}${DEFAULT_POLICY}${C_DEFAULT} policy"
+		  		echo ""
+		  		exit 0
+		  		;;
+		  	--hack-mode)
+		  		Set_Default_Policy
+		  		Clean_Rules
+		  		Block_IPV6_Traffic
+		  		Set_Kernel_Flags
+		  		Set_Log_Drop_Chain
+		  		Set_Log_Drop_Scan_Chain
+		  		Set_Input_Rules
+		  		Set_Output_Rules
+		  		echo "Setting hack rules...";
+				ip link set ${ETH} promisc on
+				echo "1" > /proc/sys/net/ipv4/ip_forward
+				${IP_TABLES} -I FORWARD -i ${ETH} -o ${ETH} -j ACCEPT
+				for i in /proc/sys/net/ipv4/conf/*/send_redirects; do echo "0" > $i; done
+				${IP_TABLES} -t mangle -A FORWARD -j TTL --ttl-inc 1
+				;;
+			*)
+				echo ""
+				echo "${C_HRED}Argument $2 not recognized.${C_DEFAULT}"
+				Usage
+				echo "Starting/Restarting ${C_HRED}failed.${C_DEFAULT}"
+				echo ""
+				exit 1
+				;;		  	
+		esac
+		echo "Firewall $1ed: ${C_HGREEN}ready & running${C_DEFAULT}"
 		echo ""
-		echo "Starting/Restarting firewall..."
-	  	Set_Default_Policy
-	  	Clean_Rules
-	  	Block_IPV6_Traffic
-	  	Set_Kernel_Flags
-	  	Set_Log_Drop_Chain
-	  	Set_Log_Drop_Scan_Chain
-	  	Set_Input_Rules
-	  	Set_Output_Rules
-	  	echo "Firewall $1ed: ${C_HGREEN}ready & running ${C_DEFAULT}"
-	  	echo ""
-	  	;;
+		;;
 	stop)
 		echo ""
-	  	echo "Stopping firewall...";
-	  	Set_Default_Policy
-	  	Clean_Rules
-	  	Set_Kernel_Flags
-	  	echo "Firewall ${C_HGREEN}running${C_DEFAULT} with ${C_HRED}DROP${C_DEFAULT} policy"
-	  	echo ""
-	  	;;
-	open)
-		echo ""
-	  	echo "Starting/Restarting firewall in opened mode..."
-	  	DEFAULT_POLICY="ACCEPT"
-	  	Set_Default_Policy
-	  	Clean_Rules
-	  	echo "Firewall ${C_HGREEN}running${C_DEFAULT} with ${C_HRED}${DEFAULT_POLICY}${C_DEFAULT} policy"
-	  	echo ""
-	  	;;
+		echo "Stopping firewall...";
+		case "$2" in
+			"")
+			  	Set_Default_Policy
+			  	Clean_Rules
+			  	Set_Kernel_Flags
+			  	echo "Firewall ${C_HGREEN}running${C_DEFAULT} with ${C_HRED}${DEFAULT_POLICY}${C_DEFAULT} policy"
+			  	echo ""
+				exit 0
+				;;
+			*)
+				echo ""
+				echo "${C_HRED}Argument $2 not recognized.${C_DEFAULT}"
+				Usage
+				echo "Starting/Restarting ${C_HRED}failed.${C_DEFAULT}"
+				echo ""
+				exit 1
+				;;
+		esac
+		;;		  	
 	status)
-	  	clear;
-	  	${IP_TABLES} -L -v
-	  	;;
+		case "$2" in
+			"")
+				clear;
+				${IP_TABLES} -L -v
+				;;
+			*)
+				echo ""
+				echo "${C_HRED}Argument $2 not recognized.${C_DEFAULT}"
+				Usage
+				exit 1
+				;;
+		esac
+		;;
 	* | help)
-		echo ""
-	  	echo "Usage (as root): $0 [start | restart | stop | open | status | help]"
-	  	echo ""
+		Usage
 	  	;;
 esac
 exit 0
