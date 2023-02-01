@@ -61,6 +61,9 @@ function Clean_Rules {
 	${IP_TABLES} -Z
 	${IP_TABLES} -Z -t nat
 	${IP_TABLES} -Z -t mangle
+	
+	ip link set ${ETH} promisc off
+	
 }
 # 1.2.3 IPV6 Policies
 #####################
