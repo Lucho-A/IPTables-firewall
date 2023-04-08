@@ -1,6 +1,6 @@
 #!/bin/bash
 
-# IPTables Firewall script for GNU/Linux 2.4.x (or superior)
+# IPTables Firewall script for GNU/Linux 2.4.x (or superior) v1.6
 
 # Sections:
 # 1.0 Declarations
@@ -12,6 +12,7 @@
 # 	1.2.4 Kernel Flags
 # 	1.2.5 Input rules
 # 	1.2.6 Output rules
+# 	1.2.7 Forward rules
 # 	1.3 Chains
 # 	1.3.1 LOG and DROP
 # 	1.3.2 LOG and DROP SCAN
@@ -22,11 +23,11 @@
 # 1.0 Declarations
 # 1.1 Variables
 ##################
-ETH="[ETH_NAME]"
-ETH_VPN="[ETH_VPN_NAME]"
-KDE_CONNECT_MAC="[MOBILE_MAC]"
+# Ethernet using for hacking procedures (vgr. "wlan0")
+ETH_HACK=""
 IP_TABLES="/sbin/iptables"
 IP6_TABLES="/sbin/ip6tables"
+MAC_CHANGER="/usr/bin/macchanger"
 DEFAULT_POLICY="DROP"
 BOLD="$(tput bold)"
 C_RED="$(tput setaf 1)"
@@ -61,9 +62,6 @@ function Clean_Rules {
 	${IP_TABLES} -Z
 	${IP_TABLES} -Z -t nat
 	${IP_TABLES} -Z -t mangle
-	
-	ip link set ${ETH} promisc off
-	
 }
 # 1.2.3 IPV6 Policies
 #####################
@@ -126,12 +124,6 @@ function Set_Input_Rules {
 	echo "Setting Input Rules"
 	# Allow unlimited traffic on loopback interface
 	${IP_TABLES} -A INPUT -i lo -j ACCEPT
-	${IP_TABLES} -A INPUT -i ${ETH} -j ACCEPT
-	# VPN
-	${IP_TABLES} -A INPUT -i ${ETH_VPN} -j ACCEPT
-    # KDE CONNECT  
-   	${IP_TABLES} -I INPUT -p udp --dport 1714:1764 -m mac --mac-source ${KDE_CONNECT_MAC} -m state --state NEW,ESTABLISHED -j ACCEPT
-	${IP_TABLES} -I INPUT -p tcp --dport 1714:1764 -m mac --mac-source ${KDE_CONNECT_MAC} -m state --state NEW,ESTABLISHED -j ACCEPT
 	# Do not allow packets frequently used by port-scanners
 	#######################################################
 	# All of the bits are cleared
@@ -155,20 +147,26 @@ function Set_Input_Rules {
 	${IP_TABLES} -A INPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 	# Explicitly default drop (for performance)
 	#####################################################	
-	${IP_TABLES} -A INPUT -i ${ETH} -p tcp --dport 0:65535 -j LOG_DROP
-	${IP_TABLES} -A INPUT -i ${ETH} -p udp --dport 0:65535 -j LOG_DROP
+	${IP_TABLES} -A INPUT -p tcp --dport 0:65535 -j LOG_DROP
+	${IP_TABLES} -A INPUT -p udp --dport 0:65535 -j LOG_DROP
 }
 # 1.2.6 Output rules
 ####################
 function Set_Output_Rules {
 	echo "Setting Output Rules"
-	# Allow unlimited traffic on loopback interface
-	${IP_TABLES} -A OUTPUT -o lo -j ACCEPT
-	${IP_TABLES} -A OUTPUT -o ${ETH} -j ACCEPT
-	${IP_TABLES} -A OUTPUT -o ${ETH_VPN} -j ACCEPT
+	# Allow unlimited traffic
+	${IP_TABLES} -A OUTPUT -j ACCEPT
 	# Explicitly default drop (for performance)
-	${IP_TABLES} -A OUTPUT -o ${ETH} -p tcp --dport 0:65535 -j DROP
-	${IP_TABLES} -A OUTPUT -o ${ETH} -p udp --dport 0:65535 -j DROP
+	${IP_TABLES} -A OUTPUT -p tcp --dport 0:65535 -j DROP
+	${IP_TABLES} -A OUTPUT -p udp --dport 0:65535 -j DROP
+}
+# 1.2.7 Forward rules
+####################
+function Set_Forward_Rules {
+	echo "Setting Forward Rules"
+	echo 1 > /proc/sys/net/ipv4/conf/${ETH_HACK}/forwarding
+	${IP_TABLES} -I FORWARD -i ${ETH_HACK} -o ${ETH_HACK} -j ACCEPT
+	${IP_TABLES} -t mangle -A FORWARD -i ${ETH_HACK} -j TTL --ttl-inc 1
 }
 # 1.3 Chains
 ############
@@ -198,11 +196,11 @@ function Set_Log_Drop_Scan_Chain {
 ###########
 function Usage {
 	echo ""
-	echo "Usage (as root): $0 [[start | restart] [--open-mode | --hack-mode] | stop | status | help]"
+	echo "Usage (as root): $0 [start | restart | turn-off | stop | status | help]"
 	echo "" 
 	echo "Examples:" 
 	echo "	# ${0} start"
-	echo "	# ${0} start --hack-mode"
+	echo "	# ${0} turn-off"
 	echo "	# ${0} stop"
 	echo ""
 }
@@ -210,92 +208,59 @@ function Usage {
 ##########
 # Note: The default policies are set before flushing the chains, to prevent a short timespan
 # between flushing the chains and setting policies where any traffic would be allowed
+
+if [ "$2" != "" ]; then
+	echo ""
+	echo "${C_HRED}Argument \"$2\" not recognized.${C_DEFAULT}"
+	Usage
+	echo ""
+	exit 1
+fi
+
 case "$1" in
 	start | restart) 
-			echo ""
-			echo "Starting/Restarting firewall..."
-		case "$2" in
-			"")
-		  		Set_Default_Policy
-		  		Clean_Rules
-		  		Block_IPV6_Traffic
-		  		Set_Kernel_Flags
-		  		Set_Log_Drop_Chain
-		  		Set_Log_Drop_Scan_Chain
-		  		Set_Input_Rules
-		  		Set_Output_Rules
-		  		;;
-			--open-mode)			
-				DEFAULT_POLICY="ACCEPT"
-		  		Set_Default_Policy
-		  		Clean_Rules
-		  		echo "Firewall ${C_HGREEN}running${C_DEFAULT} with ${C_HRED}${DEFAULT_POLICY}${C_DEFAULT} policy"
-		  		echo ""
-		  		exit 0
-		  		;;
-		  	--hack-mode)
-		  		Set_Default_Policy
-		  		Clean_Rules
-		  		Block_IPV6_Traffic
-		  		Set_Kernel_Flags
-		  		Set_Log_Drop_Chain
-		  		Set_Log_Drop_Scan_Chain
-		  		Set_Input_Rules
-		  		Set_Output_Rules
-		  		echo "Setting hack rules...";
-				ip link set ${ETH} promisc on
-				echo "1" > /proc/sys/net/ipv4/ip_forward
-				${IP_TABLES} -I FORWARD -i ${ETH} -o ${ETH} -j ACCEPT
-				for i in /proc/sys/net/ipv4/conf/*/send_redirects; do echo "0" > $i; done
-				${IP_TABLES} -t mangle -A FORWARD -j TTL --ttl-inc 1
-				;;
-			*)
-				echo ""
-				echo "${C_HRED}Argument $2 not recognized.${C_DEFAULT}"
-				Usage
-				echo "Starting/Restarting ${C_HRED}failed.${C_DEFAULT}"
-				echo ""
-				exit 1
-				;;		  	
-		esac
+		echo ""
+		echo "Starting/Restarting firewall..."
+		Set_Default_Policy
+		Clean_Rules
+		Block_IPV6_Traffic
+		Set_Kernel_Flags
+		Set_Log_Drop_Chain
+		Set_Log_Drop_Scan_Chain
+		Set_Input_Rules
+		Set_Output_Rules
+		Set_Forward_Rules
+		echo "Spoofing MAC to ${ETH_HACK}"
+		ifconfig ${ETH_HACK} down
+		${MAC_CHANGER} -r ${ETH_HACK}
+		ifconfig ${ETH_HACK} up
+		ip link set ${ETH_HACK} promisc on
 		echo "Firewall $1ed: ${C_HGREEN}ready & running${C_DEFAULT}"
 		echo ""
+		;;
+	turn-off)
+		echo ""
+		echo "Turning off firewall...";
+		DEFAULT_POLICY="ACCEPT"
+		Set_Default_Policy
+		Clean_Rules
+		echo "Firewall ${C_HGREEN}turned off${C_DEFAULT} (${C_HRED}${DEFAULT_POLICY}${C_DEFAULT} policy)"
+		echo ""
+		exit 0
 		;;
 	stop)
 		echo ""
 		echo "Stopping firewall...";
-		case "$2" in
-			"")
-			  	Set_Default_Policy
-			  	Clean_Rules
-			  	Set_Kernel_Flags
-			  	echo "Firewall ${C_HGREEN}running${C_DEFAULT} with ${C_HRED}${DEFAULT_POLICY}${C_DEFAULT} policy"
-			  	echo ""
-				exit 0
-				;;
-			*)
-				echo ""
-				echo "${C_HRED}Argument $2 not recognized.${C_DEFAULT}"
-				Usage
-				echo "Starting/Restarting ${C_HRED}failed.${C_DEFAULT}"
-				echo ""
-				exit 1
-				;;
-		esac
-		;;		  	
+		Set_Default_Policy
+		Clean_Rules
+		Set_Kernel_Flags
+		echo "Firewall ${C_HGREEN}running${C_DEFAULT} with ${C_HRED}${DEFAULT_POLICY}${C_DEFAULT} policy"
+		echo ""
+		exit 0
+		;;
 	status)
-		case "$2" in
-			"")
-				clear;
-				${IP_TABLES} -L -v
-				;;
-			*)
-				echo ""
-				echo "${C_HRED}Argument $2 not recognized.${C_DEFAULT}"
-				Usage
-				exit 1
-				;;
-		esac
+		clear;
+		${IP_TABLES} -L -v
 		;;
 	* | help)
 		Usage
